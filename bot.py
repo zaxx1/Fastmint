@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import urllib.parse
 from colorama import *
 from datetime import datetime, timedelta
 import time
@@ -49,6 +50,18 @@ class Fastmint:
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+    
+    def load_data(self, query: str):
+        query_params = urllib.parse.parse_qs(query)
+        user_data_json = query_params.get('user', [None])[0]
+
+        if user_data_json:
+            user_data = json.loads(urllib.parse.unquote(user_data_json))
+            username = user_data.get('username', 'unknown')
+            user_id = user_data.get('id')
+            return user_id, username
+        else:
+            raise ValueError("User data not found in query.")
 
     def login(self, query: str):
         url = 'https://api.chaingn.org/auth/login'
@@ -237,29 +250,166 @@ class Fastmint:
         else:
             return None
         
+    def fmc_wallets(self, token: str):
+        url = 'https://api.chaingn.org/wallets/external'
+        self.headers.update({
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {token}',
+        })
+
+        response = self.session.get(url, headers=self.headers)
+        result = response.json()
+        if response.status_code == 200:
+            return result
+        else:
+            return None
+        
+    def create_mnemonic(self, token: str):
+        url = 'https://api.chaingn.org/wallet/external'
+        data = {}
+        self.headers.update({
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {token}',
+        })
+
+        response = self.session.post(url, headers=self.headers, json=data)
+        result = response.json()
+        if response.status_code == 200:
+            return result
+        else:
+            return None
+        
+    def save_mnemonic(self, user_id, username, address, mnemonic):
+        with open('mnemonic.txt', 'a') as file:
+            file.write(
+                f"Telegram ID: {user_id} - Username: {username} - address: {address} - mnemonic: {mnemonic}\n"
+            )
+        
+    def create_wallet(self, token: str, mnemonic: str):
+        url = 'https://api.chaingn.org/wallet/external'
+        data = json.dumps({'mnemonic':mnemonic})
+        self.headers.update({
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {token}',
+        })
+
+        response = self.session.post(url, headers=self.headers, data=data)
+        result = response.json()
+        if response.status_code == 200:
+            return result
+        else:
+            return None
+        
     def question(self):
         while True:
-            farming_upgrade = input("Upgarde Farming Account Level? [y/n] -> ").strip().lower()
-            if farming_upgrade in ["y", "n"]:
-                farming_upgrade = farming_upgrade == "y"
+            choice = input("1. Run Auto Create Wallet\n2. Only Run Bot\nChoose [1 or 2] -> ").strip()
+            if choice == "1":
+                create_fmc = True
+                farming_upgrade = False
+                break
+            elif choice == "2":
+                create_fmc = False
+                while True:
+                    farming_upgrade = input("Upgrade Farming Account Level? [y/n] -> ").strip().lower()
+                    if farming_upgrade in ["y", "n"]:
+                        farming_upgrade = farming_upgrade == "y"
+                        break
+                    else:
+                        print(f"{Fore.RED+Style.BRIGHT}Invalid Input.{Fore.WHITE+Style.BRIGHT} Choose 'y' to upgrade or 'n' to skip.{Style.RESET_ALL}")
                 break
             else:
-                print(f"{Fore.RED+Style.BRIGHT}Invalid Input.{Fore.WHITE+Style.BRIGHT} Choose 'y' to upgrade or 'n' to skip.{Style.RESET_ALL}")
+                print(f"{Fore.RED+Style.BRIGHT}Invalid Input.{Fore.WHITE+Style.BRIGHT} Choose '1' or '2'.{Style.RESET_ALL}")
+        
+        return create_fmc, farming_upgrade
 
-        return farming_upgrade
-
-    def process_query(self, query: str, farming_upgrade: bool):
-
+    def process_query(self, query: str, create_fmc: bool, farming_upgrade: bool):
+        user_id, username = self.load_data(query)
         token = self.login(query)
-
         if not token:
             self.log(
                 f"{Fore.MAGENTA+Style.BRIGHT}[ Account{Style.RESET_ALL}"
                 f"{Fore.RED+Style.BRIGHT} Token Is None {Style.RESET_ALL}"
                 f"{Fore.MAGENTA+Style.BRIGHT}]{Style.RESET_ALL}"
             )
+            return
 
-        if token:
+        if create_fmc:
+            fmc_wallet = self.fmc_wallets(token)
+            if not fmc_wallet:
+                self.log(f"{Fore.MAGENTA+Style.BRIGHT}ID: {Fore.WHITE+Style.BRIGHT}{user_id}{Style.RESET_ALL}")
+                time.sleep(1)
+                self.log(f"{Fore.MAGENTA+Style.BRIGHT}Username: {Fore.WHITE+Style.BRIGHT}{username}{Style.RESET_ALL}")
+                time.sleep(1)
+                self.log(f"{Fore.MAGENTA+Style.BRIGHT}FMC Wallet: {Fore.RED+Style.BRIGHT}FMC Wallet has not been created yet.{Style.RESET_ALL}")
+                time.sleep(1)
+
+                print(
+                    f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}FMC Wallet: {Fore.YELLOW+Style.BRIGHT}Creating Mnemonic.....{Style.RESET_ALL}",
+                    end="\r",
+                    flush=True
+                )
+                time.sleep(2)
+
+                create_mnemonic = self.create_mnemonic(token)
+                if create_mnemonic:
+                    mnemonic = create_mnemonic['mnemonic']
+                    self.log(f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.GREEN+Style.BRIGHT}Mnemonic Created Successfully{Style.RESET_ALL}")
+                    time.sleep(1)
+
+                    print(
+                        f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                        f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.YELLOW+Style.BRIGHT}Creating Address.....{Style.RESET_ALL}",
+                        end="\r",
+                        flush=True
+                    )
+                    time.sleep(2)
+                    create_wallet = self.create_wallet(token, mnemonic)
+                    if create_wallet:
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.GREEN+Style.BRIGHT}Address Created Successfully{Style.RESET_ALL}")
+                        time.sleep(1)
+
+                        print(
+                            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.YELLOW+Style.BRIGHT}Saving Address n Mnemonic.....{Style.RESET_ALL}",
+                            end="\r",
+                            flush=True
+                        )
+                        time.sleep(2)
+
+                        fmc_wallet = self.fmc_wallets(token)
+                        for wallet in fmc_wallet:
+
+                            address = wallet['address']
+                            self.save_mnemonic(user_id, username, address, mnemonic)
+                            self.log(f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.GREEN+Style.BRIGHT}Address n Mnemonic Saved Successfully{Style.RESET_ALL}")
+
+                    else:
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.RED+Style.BRIGHT}Failed to Create Address{Style.RESET_ALL}")
+                        time.sleep(1)
+
+                else:
+                    self.log(f"{Fore.MAGENTA+Style.BRIGHT}Wallet Status: {Fore.GREEN+Style.BRIGHT}Failed to Create Mnemonic{Style.RESET_ALL}")
+                    time.sleep(1)
+
+            else:
+                for fmc in fmc_wallet:
+                    if fmc:
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}ID: {Fore.WHITE+Style.BRIGHT}{user_id}{Style.RESET_ALL}")
+                        time.sleep(1)
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}Username: {Fore.WHITE+Style.BRIGHT}{username}{Style.RESET_ALL}")
+                        time.sleep(1)
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}FMC Wallet: {Fore.GREEN+Style.BRIGHT}Already Created{Style.RESET_ALL}")
+                        time.sleep(1)
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}Address: {Fore.WHITE+Style.BRIGHT}{fmc['address']}{Style.RESET_ALL}")
+                        time.sleep(1)
+                        self.log(f"{Fore.MAGENTA+Style.BRIGHT}Balance: {Fore.WHITE+Style.BRIGHT}{fmc['balance']}{Style.RESET_ALL}")
+                        time.sleep(1)
+
+        else:
             user = self.user(token)
             if not user:
                 return
@@ -372,8 +522,8 @@ class Fastmint:
                         farm_date_wib = farm_date_utc.astimezone(wib)
                         claim_time = (farm_date_wib + timedelta(hours=6)).strftime('%x %X %Z')
 
-                        Claim = self.claim_farm(token, id)
-                        if Claim:
+                        claim = self.claim_farm(token, id)
+                        if claim:
                             self.log(
                                 f"{Fore.MAGENTA+Style.BRIGHT}[ Farming{Style.RESET_ALL}"
                                 f"{Fore.GREEN+Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
@@ -534,7 +684,7 @@ class Fastmint:
             with open('query.txt', 'r') as file:
                 queries = [line.strip() for line in file if line.strip()]
 
-            farming_upgrade = self.question()
+            create_fmc, farming_upgrade = self.question()
 
             while True:
                 self.clear_terminal()
@@ -543,13 +693,14 @@ class Fastmint:
                     f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT}{len(queries)}{Style.RESET_ALL}"
                 )
-                self.log(f"{Fore.CYAN + Style.BRIGHT}-----------------------------------------------------------------------{Style.RESET_ALL}")
+                self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
 
                 for query in queries:
                     query = query.strip()
                     if query:
-                        self.process_query(query, farming_upgrade)
-                        self.log(f"{Fore.CYAN + Style.BRIGHT}-----------------------------------------------------------------------{Style.RESET_ALL}")
+                        self.process_query(query, create_fmc, farming_upgrade)
+                        self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+                        time.sleep(3)
 
                 seconds = 1800
                 while seconds > 0:
