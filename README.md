@@ -13,6 +13,8 @@ Register Here : [Fastmint](https://t.me/fastmintapp_bot?start=1493482017)
   - Auto Complete Task
   - Multi Account
 
+  - Auto Create Wallet [Delete]
+
   - `Note`: If u are a new user. Register first before taking a query
 
 ## Prasyarat
