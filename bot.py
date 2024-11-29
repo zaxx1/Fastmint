@@ -199,6 +199,7 @@ class Fastmint:
         
     async def claim_refferal(self, token: str, retries=3):
         url = 'https://api.chaingn.org/referral/claim'
+        data = {}
         headers = {
             **self.headers,
             'Content-Type': 'application/json',
@@ -208,7 +209,7 @@ class Fastmint:
         for attempt in range(retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(url, headers=headers) as response:
+                    async with session.post(url, headers=headers, json=data) as response:
                         response.raise_for_status()
                         return True
             except (aiohttp.ClientError, aiohttp.ContentTypeError) as e:
